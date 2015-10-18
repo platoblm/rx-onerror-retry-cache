@@ -9,33 +9,30 @@ public class OnErrorRetryCache<T> {
          return new OnErrorRetryCache<>(source).result;
     }
 
-    private final AtomicReference<Observable<T>> cache = new AtomicReference<>();
     private final Observable<T> result;
+    private final AtomicReference<Observable<T>> cache = new AtomicReference<>();
     private final Semaphore singlePermit = new Semaphore(1);
 
     private OnErrorRetryCache(Observable<T> source) {
-        result = Observable.defer(() -> createObservable(source));
+        result = Observable.defer(() -> createWhenObserverSubscribes(source));
     }
 
-    private Observable<T> createObservable(Observable<T> source) {
+    private Observable<T> createWhenObserverSubscribes(Observable<T> source) {
         singlePermit.acquireUninterruptibly();
 
-        for(;;) {
-            Observable<T> cached = cache.get();
-            if (cached != null) {
-                singlePermit.release();
-                return cached;
-            }
-
-            Observable<T> next = source
-                    .doOnError(e -> cache.set(null))
-                    .doOnTerminate(singlePermit::release)
-                    .replay()
-                    .autoConnect();
-
-            if (cache.compareAndSet(null, next)) {
-                return next;
-            }
+        Observable<T> cached = cache.get();
+        if (cached != null) {
+            singlePermit.release();
+            return cached;
         }
+
+        Observable<T> next = source
+                .doOnError(e -> cache.set(null))
+                .doOnTerminate(singlePermit::release)
+                .replay()
+                .autoConnect();
+
+        cache.set(next);
+        return next;
     }
 }

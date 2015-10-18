@@ -10,7 +10,7 @@ import static rx.schedulers.Schedulers.computation;
 
 public class OnErrorRetryCacheTest {
 
-    private static final int TASK_DURATION = 200;
+    private static final int TASK_DURATION = 500;
 
     AtomicInteger attempts = new AtomicInteger();
 
