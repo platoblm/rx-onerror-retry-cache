@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static rx.schedulers.Schedulers.computation;
 
-
 public class OnErrorRetryCacheTest {
 
     private static final int TASK_DURATION = 200;
