@@ -34,7 +34,7 @@ public class OnErrorRetryCacheTest {
     @Test
     public void shouldExecuteOnceAndCacheResultIfFirstCompletes() {
         Observable<Integer> observable = OnErrorRetryCache.from(longTask);
-        int expectedAttempts = 1;// just the first that completed and cached
+        int expectedAttempts = 1;// just the first that completed and was cached
 
         subscribeAllAndWaitUntilDone(observable);
 
@@ -52,7 +52,7 @@ public class OnErrorRetryCacheTest {
                     return 0;
                 });
         observable = OnErrorRetryCache.from(observable);
-        int expectedAttempts = 2;// the first that failed and the second that completed and cached
+        int expectedAttempts = 2;// the first that failed and the second that completed and was cached
 
         subscribeAllAndWaitUntilDone(observable);
 
