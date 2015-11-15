@@ -1,3 +1,4 @@
+import org.assertj.core.api.Condition;
 import org.junit.Before;
 import org.junit.Test;
 import rx.Observable;
@@ -10,8 +11,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class OnErrorRetryCacheTest {
 
-    private static final int TASK_DURATION = 50;
-
     AtomicInteger attempts = new AtomicInteger();
 
     TestSubscriber subscriber1 = new TestSubscriber();
@@ -20,11 +19,12 @@ public class OnErrorRetryCacheTest {
  
     Observable<Integer> longTask;
     
-    @Before public void setup(){
+    @Before public void setup()
+    {
         longTask = Observable.just(0)
                 .map(x -> {
-                    attempts.incrementAndGet();
-                    sleep(TASK_DURATION);
+                    attempts.incrementAndGet(); // track attempts made
+                    sleep(50);
                     return 0;
                 })
                 .subscribeOn(Schedulers.newThread());
@@ -32,45 +32,38 @@ public class OnErrorRetryCacheTest {
     
     @Test public void shouldExecuteOnceAndCacheResultIfFirstCompletes() 
     {
-        int expectedAttempts = 1; // 1st succeeds and is cached
         Observable<Integer> observable = OnErrorRetryCache.from(longTask);
 
         subscribeAllAndWaitUntilDone(observable);
 
-        assertThat(attempts.get()).isEqualTo(expectedAttempts);
-        assertThat(subscriber1.nextCalled).isTrue();
-        assertThat(subscriber2.nextCalled).isTrue();
-        assertThat(subscriber3.nextCalled).isTrue();
+        assertThat(attempts.get()).isEqualTo(1); // 1st cached, 2n and 3rd don't happen
+        assertThat(subscriber1).has(succeeded());
+        assertThat(subscriber2).has(succeeded());
+        assertThat(subscriber3).has(succeeded());
     }
 
     @Test public void shouldRetryAndThenCacheResultIfFirstFails() 
     {
-        int expectedAttempts = 2; // 1st fails, 2nd succeeds and is cached
-        Observable<Integer> observable = OnErrorRetryCache.from(
-                taskThatFailsOnFirstAttempt()
-        );
+        Observable<Integer> observable = OnErrorRetryCache.from(taskThatFailsOnFirstAttempt());
 
         subscribeAllAndWaitUntilDone(observable);
 
-        assertThat(attempts.get()).isEqualTo(expectedAttempts);
-        assertThat(subscriber1.errorCalled).isTrue();
-        assertThat(subscriber2.nextCalled).isTrue();
-        assertThat(subscriber3.nextCalled).isTrue();
+        assertThat(attempts.get()).isEqualTo(2); // 2nd cached, 3rd doesn't happen
+        assertThat(subscriber1).has(errored());
+        assertThat(subscriber2).has(succeeded());
+        assertThat(subscriber3).has(succeeded());
     }
 
     @Test public void shouldRetryIfFirstTwoFail() 
     {
-        int expectedAttempts = 3; // 1st and 2nd fail, 3rd succeeds
-        Observable<Integer> observable = OnErrorRetryCache.from(
-                taskThatFailsOnFirstTwoAttempts()
-        );
+        Observable<Integer> observable = OnErrorRetryCache.from(taskThatFailsOnFirstTwoAttempts());
 
         subscribeAllAndWaitUntilDone(observable);
 
-        assertThat(attempts.get()).isEqualTo(expectedAttempts);
-        assertThat(subscriber1.errorCalled).isTrue();
-        assertThat(subscriber2.errorCalled).isTrue();
-        assertThat(subscriber3.nextCalled).isTrue();
+        assertThat(attempts.get()).isEqualTo(3);
+        assertThat(subscriber1).has(errored());
+        assertThat(subscriber2).has(errored());
+        assertThat(subscriber3).has(succeeded());
     }
 
     private void subscribeAllAndWaitUntilDone(Observable<Integer> observable) {
@@ -81,18 +74,18 @@ public class OnErrorRetryCacheTest {
     }
     
     private static class TestSubscriber extends Subscriber {
-        boolean completedCalled;
-        boolean errorCalled;
+        boolean completed;
+        boolean errored;
         boolean nextCalled;
 
         @Override
         public void onCompleted() {
-            completedCalled = true;
+            completed = true;
         }
 
         @Override
         public void onError(Throwable e) {
-            errorCalled = true;
+            errored = true;
         }
 
         @Override
@@ -101,7 +94,7 @@ public class OnErrorRetryCacheTest {
         }
 
         boolean done() {
-            return completedCalled || errorCalled;
+            return completed || errored;
         }
     }
 
@@ -117,12 +110,6 @@ public class OnErrorRetryCacheTest {
                 sleep(50);
             }
         }
-    }
-    
-    private void sleep(int millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException ignore) {}
     }
 
     private Observable<Integer> taskThatFailsOnFirstAttempt() {
@@ -143,5 +130,27 @@ public class OnErrorRetryCacheTest {
                     }
                     return 0;
                 });
+    }
+
+    private Condition<TestSubscriber> succeeded() {
+        return new Condition<TestSubscriber>("Succeeded"){
+            @Override public boolean matches(TestSubscriber subscriber) {
+                return subscriber.nextCalled;
+            }
+        };
+    }
+
+    private Condition<TestSubscriber> errored() {
+        return new Condition<TestSubscriber>("Errored"){
+            @Override public boolean matches(TestSubscriber subscriber) {
+                return subscriber.errored;
+            }
+        };
+    }
+
+    private void sleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ignore) {}
     }
 }
