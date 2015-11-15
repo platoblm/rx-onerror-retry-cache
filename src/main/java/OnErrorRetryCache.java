@@ -1,38 +1,48 @@
 import rx.Observable;
 
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class OnErrorRetryCache<T> {
 
     public static <T> Observable<T> from(Observable<T> source) {
-         return new OnErrorRetryCache<>(source).result;
+         return new OnErrorRetryCache<>(source).deferred;
     }
 
-    private final Observable<T> result;
-    private final AtomicReference<Observable<T>> cache = new AtomicReference<>();
+    private final Observable<T> deferred;
     private final Semaphore singlePermit = new Semaphore(1);
+    
+    private Observable<T> cache = null;
+    private Observable<T> inProgress = null;
 
     private OnErrorRetryCache(Observable<T> source) {
-        result = Observable.defer(() -> createWhenObserverSubscribes(source));
+        deferred = Observable.defer(() -> createWhenObserverSubscribes(source));
     }
 
-    private Observable<T> createWhenObserverSubscribes(Observable<T> source) {
+    private Observable<T> createWhenObserverSubscribes(Observable<T> source) 
+    {
         singlePermit.acquireUninterruptibly();
-
-        Observable<T> cached = cache.get();
+        
+        Observable<T> cached = cache;
         if (cached != null) {
             singlePermit.release();
             return cached;
         }
 
-        Observable<T> next = source
-                .doOnError(e -> cache.set(null))
-                .doOnTerminate(singlePermit::release)
+        inProgress = source
+                .doOnCompleted(this::onSuccess)
+                .doOnTerminate(this::onTermination)
                 .replay()
                 .autoConnect();
 
-        cache.set(next);
-        return next;
+        return inProgress;
+    }
+    
+    private void onSuccess() {
+        cache = inProgress;
+    }
+    
+    private void onTermination() {
+        inProgress = null;
+        singlePermit.release();
     }
 }
