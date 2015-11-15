@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class OnErrorRetryCacheTest {
 
-    private static final int TASK_DURATION = 200;
+    private static final int TASK_DURATION = 50;
 
     AtomicInteger attempts = new AtomicInteger();
 
